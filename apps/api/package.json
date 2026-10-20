@@ -13,7 +13,8 @@
     "db:migrate": "node --env-file=../../.env src/db/migrar.ts",
     "db:studio": "drizzle-kit studio",
     "indexar": "node --env-file=../../.env src/pdf/cli-indexar.ts",
-    "links-report": "node --env-file=../../.env src/pdf/cli-links.ts"
+    "links-report": "node --env-file=../../.env src/pdf/cli-links.ts",
+    "ocr": "node --env-file=../../.env src/pdf/cli-ocr.ts"
   },
   "dependencies": {
     "@estudos/shared": "workspace:*",
@@ -24,7 +25,9 @@
     "drizzle-orm": "^0.44.6",
     "fastify": "^5.6.1",
     "pdfjs-dist": "^5.4.149",
-    "zod": "^4.1.11"
+    "zod": "^4.1.11",
+    "tesseract.js": "^6.0.1",
+    "@napi-rs/canvas": "^0.1.80"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
