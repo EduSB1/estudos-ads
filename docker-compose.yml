@@ -1,0 +1,61 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PDF_DIR: /pdfs
+      DATABASE_URL: /dados/estudos.db
+      API_PORT: '3333'
+      API_HOST: 0.0.0.0
+      PISTON_URL: http://piston:2000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      # A pasta de PDFs entra SOMENTE LEITURA. Nao remova o :ro.
+      - ${PDF_DIR:?defina PDF_DIR no .env}:/pdfs:ro
+      - dados-sqlite:/dados
+    ports:
+      - '3333:3333'
+    depends_on:
+      piston:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3333/saude').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3333}
+    ports:
+      - '5173:80'
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Execucao de Java/C/C# isolada. Precisa de privileged para os sandboxes do Piston.
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    privileged: true
+    volumes:
+      - piston-pacotes:/piston/packages
+    ports:
+      - '2000:2000'
+    restart: unless-stopped
+
+volumes:
+  dados-sqlite:
+  piston-pacotes:
