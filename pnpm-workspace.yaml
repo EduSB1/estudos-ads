@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# better-sqlite3 e esbuild precisam rodar seus scripts de build (binario nativo / wasm).
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
+  - esbuild-wasm
+  - '@google/genai'
+  - protobufjs
