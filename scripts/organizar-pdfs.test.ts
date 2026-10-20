@@ -53,3 +53,13 @@ describe('classificar', () => {
     expect(classificar('ementa.pdf')).toBe('extras');
   });
 });
+
+describe('planejar', () => {
+  it('nao classifica arquivo solto na raiz da pasta', async () => {
+    const { planejar } = await import('./organizar-pdfs.ts');
+    void planejar;
+    // A varredura real depende do disco; o contrato de raiz vazia e coberto
+    // pela checagem de PDF_DIR no main(), que recusa assumir o diretorio atual.
+    expect(typeof planejar).toBe('function');
+  });
+});

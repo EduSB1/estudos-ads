@@ -202,9 +202,43 @@ function aplicar(raiz: string, acoes: Acao[]): string {
     }
   }
   fs.closeSync(log);
+
+  const vazias = removerPastasVazias(raiz, mover);
   console.log(`\n${movidos}/${mover.length} arquivos movidos.`);
+  if (vazias) console.log(`${vazias} pasta(s) de origem vazia(s) removida(s).`);
   console.log(`Log para desfazer: ${path.relative(process.cwd(), caminhoLog)}`);
   return caminhoLog;
+}
+
+/**
+ * Remove as pastas de origem que ficaram vazias depois do move.
+ * So apaga diretorio comprovadamente vazio, e nunca a propria raiz.
+ */
+function removerPastasVazias(raiz: string, mover: Extract<Acao, { tipo: 'mover' }>[]): number {
+  const candidatas = new Set<string>();
+  for (const acao of mover) {
+    let dir = path.dirname(acao.origem);
+    while (dir && dir !== '.' && dir !== path.sep) {
+      candidatas.add(dir);
+      dir = path.dirname(dir);
+    }
+  }
+
+  let removidas = 0;
+  // Da mais funda para a mais rasa, para esvaziar de dentro para fora.
+  for (const rel of [...candidatas].sort((a, b) => b.split(path.sep).length - a.split(path.sep).length)) {
+    const completo = path.join(raiz, rel);
+    if (completo === raiz || !fs.existsSync(completo)) continue;
+    try {
+      if (fs.readdirSync(completo).length === 0) {
+        fs.rmdirSync(completo);
+        removidas++;
+      }
+    } catch {
+      /* pasta ocupada: deixa como esta */
+    }
+  }
+  return removidas;
 }
 
 function desfazer(caminhoLog: string): void {
@@ -278,6 +312,13 @@ function relatorio(raiz: string, acoes: Acao[], aplicando: boolean): void {
 // ---------------------------------------------------------------------- main
 
 function main(): void {
+  // Node 24 le o .env sozinho; se nao existir, seguimos so com o ambiente atual.
+  try {
+    process.loadEnvFile(path.resolve(import.meta.dirname, '..', '.env'));
+  } catch {
+    /* sem .env: PDF_DIR precisa vir do ambiente ou de --raiz */
+  }
+
   const argv = process.argv.slice(2);
   const valor = (flag: string): string | null => {
     const i = argv.indexOf(flag);
@@ -290,11 +331,28 @@ function main(): void {
     return;
   }
 
-  const raiz = path.resolve(valor('--raiz') ?? process.env.PDF_DIR ?? '');
-  if (!raiz || !fs.existsSync(raiz)) {
-    console.error('Defina a pasta dos PDFs em PDF_DIR ou passe --raiz <caminho>.');
+  const informada = (valor('--raiz') ?? process.env.PDF_DIR ?? '').trim();
+  if (!informada) {
+    console.error('Defina a pasta dos PDFs em PDF_DIR (.env) ou passe --raiz <caminho>.');
+    console.error('Sem isso o script nao tem onde operar — e nao assume o diretorio atual.');
     process.exitCode = 1;
     return;
+  }
+
+  const raiz = path.resolve(informada);
+  if (!fs.existsSync(raiz) || !fs.statSync(raiz).isDirectory()) {
+    console.error(`Pasta inexistente: ${raiz}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Defesa em profundidade: este script jamais deve mexer no proprio repositorio.
+  for (const marcador of ['package.json', 'pnpm-workspace.yaml', '.git']) {
+    if (fs.existsSync(path.join(raiz, marcador))) {
+      console.error(`Recusando operar em ${raiz}: parece ser um repositorio (achei ${marcador}).`);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const aplicando = argv.includes('--apply');
