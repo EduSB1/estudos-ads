@@ -16,3 +16,4 @@ scripts/links-report/
 test-results/
 playwright-report/
 blob-report/
+*.tsbuildinfo
