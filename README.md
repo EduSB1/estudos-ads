@@ -135,12 +135,36 @@ e `prefers-reduced-motion` respeitado.
 | `←` `→` / `PageUp` `PageDown` | Página anterior/próxima no leitor |
 | `Ctrl` + `Enter`              | Executar o código na mini IDE     |
 
-## Estado atual dos PDFs
+## OCR
 
 Os 30 PDFs em `PDF_DIR` são **impressões de tela da plataforma da UniOpet** (geradas pelo Chrome):
-cada página é uma imagem, sem nenhuma camada de texto. O indexador detecta isso e marca os
-documentos com `precisa_ocr`.
+cada página é uma imagem, sem nenhuma camada de texto. O indexador detecta isso sozinho e marca
+os documentos com `precisa_ocr`.
 
-Consequência prática: busca full-text, extração de questões e detecção de links não têm o que
-processar nesses arquivos até que exista uma etapa de OCR. Leitura, destaques, lembretes,
-anotações, questões manuais e a mini IDE funcionam normalmente.
+Para dar texto a eles:
+
+```bash
+pnpm --filter api ocr                 # todos os pendentes
+pnpm --filter api ocr -- --limite 3   # só os três primeiros
+pnpm --filter api ocr -- --id 11      # um documento específico
+```
+
+Cada página é renderizada com pdfjs a 2x e passada ao tesseract.js em português. Leva alguns
+minutos por arquivo — é uma etapa manual, de propósito, para não atrasar a indexação. O texto vai
+para o SQLite e alimenta a busca FTS5 e a extração de questões. **A pasta de PDFs continua
+somente leitura:** o OCR lê os bytes e grava o resultado no banco, nunca de volta no arquivo.
+
+O OCR não é perfeito — enunciados podem vir truncados ou com alternativas embaralhadas. A tela de
+Questões permite corrigir cada questão à mão, inclusive o gabarito.
+
+## Organização atual da pasta
+
+Os PDFs já estão na convenção:
+
+```
+2026-2/metodologias-ageis/aulas/
+2026-2/programacao-orientada-a-objetos-java/aulas/
+2026-2/teste-e-qualidade-de-software/aulas/
+```
+
+O indexador entende tanto esse layout quanto as pastas soltas como vêm da UniOpet.

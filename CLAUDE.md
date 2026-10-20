@@ -13,16 +13,19 @@ sem sair do navegador.
 
 | Camada   | Tecnologias                                                                                  |
 | -------- | -------------------------------------------------------------------------------------------- |
-| Frontend | React + TypeScript + Vite; Tailwind CSS + shadcn/ui                                          |
+| Frontend | React 18 + TypeScript + Vite; Tailwind CSS + shadcn/ui; react-pdf-highlighter-extended       |
 | Backend  | Fastify; validação com Zod                                                                   |
 | Dados    | Drizzle ORM + better-sqlite3 (SQLite local em arquivo, com FTS5)                             |
-| PDFs     | pdfjs-dist (extração de texto, links e posição)                                              |
+| PDFs     | pdfjs-dist (extração de texto, links e posição); tesseract.js + @napi-rs/canvas para OCR     |
 | Mini IDE | Monaco Editor; Python no navegador via Pyodide; SQL via sql.js; demais linguagens via Piston |
 | IA       | `@google/genai`                                                                              |
 | Infra    | pnpm workspaces (monorepo); Docker Compose                                                   |
 
 Essa lista é fechada. Não introduza outra biblioteca para um papel já coberto acima sem
 combinar antes.
+
+**React fica no 18.** O `react-pdf-highlighter-extended` exige `react@^18.3.1`; subir para o 19
+quebra o leitor. Qualquer upgrade precisa trocar a biblioteca de destaques junto.
 
 ## Regras do projeto
 
