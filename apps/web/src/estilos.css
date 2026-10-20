@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tema dark por padrao. O claro existe, mas o dark e o estado inicial. */
+@layer base {
+  :root,
+  .dark {
+    --fundo: 222 20% 8%;
+    --superficie: 222 18% 12%;
+    --borda: 222 14% 22%;
+    --texto: 210 20% 94%;
+    --suave: 215 14% 62%;
+    --destaque: 199 89% 52%;
+    --destaque-texto: 222 47% 8%;
+    --perigo: 0 72% 58%;
+    --sucesso: 142 60% 45%;
+    --atencao: 38 92% 55%;
+  }
+
+  .light {
+    --fundo: 0 0% 100%;
+    --superficie: 210 20% 97%;
+    --borda: 214 20% 88%;
+    --texto: 222 30% 12%;
+    --suave: 215 16% 42%;
+    --destaque: 199 89% 42%;
+    --destaque-texto: 0 0% 100%;
+  }
+
+  * {
+    @apply border-borda;
+  }
+
+  body {
+    @apply bg-fundo text-texto antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Foco sempre visivel: a navegacao por teclado e requisito, nao enfeite. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-destaque ring-offset-2 ring-offset-fundo;
+  }
+
+  ::selection {
+    @apply bg-destaque/30;
+  }
+}
+
+@layer components {
+  .cartao {
+    @apply rounded-lg border border-borda bg-superficie;
+  }
+
+  /* Camada de texto do react-pdf: precisa ficar invisivel mas selecionavel. */
+  .textLayer {
+    @apply absolute inset-0 overflow-hidden opacity-25;
+    line-height: 1;
+  }
+  .textLayer span {
+    @apply absolute origin-top-left whitespace-pre text-transparent;
+  }
+  .annotationLayer {
+    @apply absolute inset-0;
+  }
+}
+
+/* Barras de rolagem discretas, combinando com o tema escuro. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-borda;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-suave/50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
