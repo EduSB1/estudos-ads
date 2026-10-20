@@ -15,7 +15,7 @@ export default defineConfig({
         // Monaco e o leitor de PDF so sao baixados quando a tela correspondente abre.
         manualChunks: {
           monaco: ['@monaco-editor/react'],
-          pdf: ['react-pdf', 'pdfjs-dist'],
+          pdf: ['react-pdf-highlighter-extended', 'pdfjs-dist'],
           editor: ['@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-placeholder'],
         },
       },

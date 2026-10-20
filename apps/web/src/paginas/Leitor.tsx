@@ -3,7 +3,6 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  Code2,
   Highlighter,
   NotebookPen,
   Trash2,
@@ -11,25 +10,38 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { PdfHighlighter, PdfLoader } from 'react-pdf-highlighter-extended';
+import type { PdfHighlighterUtils, PdfSelection } from 'react-pdf-highlighter-extended';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { BarraSelecao } from '@/componentes/BarraSelecao';
+import { ContainerDestaque, type DestaqueNoPdf } from '@/componentes/ContainerDestaque';
 import { PainelAnotacoes } from '@/componentes/PainelAnotacoes';
 import { Botao } from '@/componentes/ui/botao';
 import { Campo } from '@/componentes/ui/campo';
 import { Carregando } from '@/componentes/ui/carregando';
 import { Etiqueta } from '@/componentes/ui/etiqueta';
 import { api } from '@/lib/api';
-import { CORES_DESTAQUE, LISTA_CORES, type CorDestaque } from '@/lib/cores';
+import { CORES_DESTAQUE, type CorDestaque } from '@/lib/cores';
 import type { DestaqueApi, DocumentoDetalhe } from '@/lib/tipos';
 import { cn } from '@/lib/utils';
 
-// react-pdf precisa do worker do pdfjs servido localmente (sem CDN).
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+// O worker do pdfjs e servido pelo proprio build; nada vem de CDN.
+const WORKER = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
-type Selecao = { texto: string; pagina: number; retangulos: DOMRect[] };
+/** Converte o registro da API no formato que o PdfHighlighter espera. */
+function paraDestaqueNoPdf(d: DestaqueApi): DestaqueNoPdf {
+  const posicao = d.posicao as DestaqueNoPdf['position'];
+  return {
+    id: String(d.id),
+    destaqueId: d.id,
+    cor: (d.cor as CorDestaque) ?? 'amarelo',
+    lembrete: d.lembrete,
+    comentario: d.comentario,
+    type: 'text',
+    content: { text: d.texto },
+    position: posicao,
+  };
+}
 
 export function Leitor() {
   const { id } = useParams();
@@ -39,26 +51,29 @@ export function Leitor() {
 
   const [documento, setDocumento] = useState<DocumentoDetalhe | null>(null);
   const [destaques, setDestaques] = useState<DestaqueApi[]>([]);
-  const [totalPaginas, setTotalPaginas] = useState(0);
   const [pagina, setPagina] = useState(() => Number(params.get('pagina')) || 1);
+  const [totalPaginas, setTotalPaginas] = useState(0);
   const [escala, setEscala] = useState(1.2);
-  const [selecao, setSelecao] = useState<Selecao | null>(null);
-  const [cor, setCor] = useState<CorDestaque>('amarelo');
-  const [lembrete, setLembrete] = useState('');
   const [painel, setPainel] = useState<'destaques' | 'anotacoes'>('destaques');
 
-  const areaRef = useRef<HTMLDivElement>(null);
+  const utilsRef = useRef<PdfHighlighterUtils | null>(null);
+  const selecaoRef = useRef<PdfSelection | null>(null);
   const salvarLeitura = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paginaInicial = useRef(Number(params.get('pagina')) || 0);
 
   const arquivo = useMemo(() => api.urlArquivo(documentoId), [documentoId]);
+  const destaquesNoPdf = useMemo(() => destaques.map(paraDestaqueNoPdf), [destaques]);
 
   useEffect(() => {
     if (!Number.isFinite(documentoId)) return;
-    void api.get<DocumentoDetalhe>(`/documentos/${documentoId}`).then(setDocumento);
+    void api.get<DocumentoDetalhe>(`/documentos/${documentoId}`).then((doc) => {
+      setDocumento(doc);
+      setTotalPaginas(doc.totalPaginas);
+    });
     void api.get<DestaqueApi[]>(`/destaques?documentoId=${documentoId}`).then(setDestaques);
   }, [documentoId]);
 
-  // Lembra a ultima pagina lida (debounce para nao escrever a cada rolagem).
+  // Guarda a ultima pagina lida, com folga para nao escrever a cada rolagem.
   useEffect(() => {
     if (!documentoId || !pagina) return;
     setParams({ pagina: String(pagina) }, { replace: true });
@@ -69,7 +84,12 @@ export function Leitor() {
   }, [documentoId, pagina, setParams]);
 
   const irPara = useCallback(
-    (n: number) => setPagina((atual) => Math.min(Math.max(1, n), totalPaginas || atual)),
+    (n: number) => {
+      const viewer = utilsRef.current?.getViewer();
+      const alvo = Math.min(Math.max(1, n), totalPaginas || n);
+      if (viewer) viewer.currentPageNumber = alvo;
+      setPagina(alvo);
+    },
     [totalPaginas],
   );
 
@@ -92,68 +112,77 @@ export function Leitor() {
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [irPara, pagina]);
 
-  /** Captura o texto selecionado no PDF para virar destaque ou snippet. */
-  const aoSoltarMouse = useCallback(() => {
-    const sel = window.getSelection();
-    const texto = sel?.toString().trim() ?? '';
-    if (!texto || !sel || sel.rangeCount === 0) {
-      setSelecao(null);
-      return;
-    }
-    const retangulos = Array.from(sel.getRangeAt(0).getClientRects());
-    setSelecao({ texto, pagina, retangulos });
-  }, [pagina]);
+  /** Liga o viewer do pdf.js: acompanha a pagina atual e retoma onde parou. */
+  const ligarViewer = useCallback((utils: PdfHighlighterUtils) => {
+    utilsRef.current = utils;
+    const viewer = utils.getViewer();
+    if (!viewer) return;
 
-  const criarDestaque = useCallback(async () => {
-    if (!selecao) return;
-    const area = areaRef.current?.getBoundingClientRect();
-    const posicao = {
-      retangulos: selecao.retangulos.map((r) => ({
-        x: area ? r.left - area.left : r.left,
-        y: area ? r.top - area.top : r.top,
-        largura: r.width,
-        altura: r.height,
-      })),
-      escala,
-    };
-
-    const criado = await api.post<DestaqueApi>('/destaques', {
-      documentoId,
-      pagina: selecao.pagina,
-      cor,
-      texto: selecao.texto,
-      posicao,
-      lembrete: lembrete.trim() || null,
-      lembreteEm: lembrete.trim() ? new Date().toISOString() : null,
+    viewer.eventBus.on('pagechanging', (evento: { pageNumber: number }) => {
+      setPagina(evento.pageNumber);
     });
 
-    setDestaques((atual) => [...atual, criado]);
-    setSelecao(null);
-    setLembrete('');
-    window.getSelection()?.removeAllRanges();
-  }, [cor, documentoId, escala, lembrete, selecao]);
+    if (paginaInicial.current > 1) {
+      const alvo = paginaInicial.current;
+      paginaInicial.current = 0;
+      // O viewer só aceita o salto depois de montar as páginas.
+      viewer.eventBus.on('pagesloaded', () => {
+        viewer.currentPageNumber = alvo;
+      });
+    }
+  }, []);
+
+  const criarDestaque = useCallback(
+    async (cor: CorDestaque, lembrete: string) => {
+      const selecao = selecaoRef.current;
+      if (!selecao) return;
+
+      const criado = await api.post<DestaqueApi>('/destaques', {
+        documentoId,
+        pagina: selecao.position.boundingRect.pageNumber,
+        cor,
+        texto: selecao.content.text ?? '',
+        posicao: selecao.position,
+        lembrete: lembrete || null,
+        lembreteEm: lembrete ? new Date().toISOString() : null,
+      });
+
+      setDestaques((atual) => [...atual, criado]);
+      utilsRef.current?.removeGhostHighlight();
+      utilsRef.current?.setTip(null);
+      selecaoRef.current = null;
+    },
+    [documentoId],
+  );
 
   /** "Abrir na IDE": manda o trecho selecionado para a mini IDE. */
   const abrirNaIde = useCallback(() => {
+    const selecao = selecaoRef.current;
     if (!selecao) return;
     sessionStorage.setItem(
       'ide:codigo-importado',
       JSON.stringify({
-        codigo: selecao.texto,
+        codigo: selecao.content.text ?? '',
         documentoId,
-        pagina: selecao.pagina,
+        pagina: selecao.position.boundingRect.pageNumber,
         titulo: documento?.titulo ?? 'Trecho do PDF',
       }),
     );
     navegar('/ide?importar=1');
-  }, [documento?.titulo, documentoId, navegar, selecao]);
+  }, [documento?.titulo, documentoId, navegar]);
 
   const removerDestaque = useCallback(async (destaqueId: number) => {
     await api.delete(`/destaques/${destaqueId}`);
     setDestaques((atual) => atual.filter((d) => d.id !== destaqueId));
   }, []);
 
-  const destaquesDaPagina = destaques.filter((d) => d.pagina === pagina);
+  const irParaDestaque = useCallback(
+    (destaqueId: number) => {
+      const alvo = destaquesNoPdf.find((d) => d.destaqueId === destaqueId);
+      if (alvo) utilsRef.current?.scrollToHighlight(alvo);
+    },
+    [destaquesNoPdf],
+  );
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
@@ -177,7 +206,7 @@ export function Leitor() {
             tamanho="icone"
             variante="fantasma"
             aria-label="Diminuir zoom"
-            onClick={() => setEscala((e) => Math.max(0.6, e - 0.2))}
+            onClick={() => setEscala((e) => Math.max(0.6, Number((e - 0.2).toFixed(2))))}
           >
             <ZoomOut aria-hidden />
           </Botao>
@@ -186,7 +215,7 @@ export function Leitor() {
             tamanho="icone"
             variante="fantasma"
             aria-label="Aumentar zoom"
-            onClick={() => setEscala((e) => Math.min(3, e + 0.2))}
+            onClick={() => setEscala((e) => Math.min(3, Number((e + 0.2).toFixed(2))))}
           >
             <ZoomIn aria-hidden />
           </Botao>
@@ -195,72 +224,39 @@ export function Leitor() {
 
       <div className="flex min-h-0 flex-1 gap-3">
         {/* -------------------------------------------------------- documento */}
-        <div
-          ref={areaRef}
-          onMouseUp={aoSoltarMouse}
-          className="relative min-w-0 flex-1 overflow-auto rounded-lg border border-borda bg-superficie/40 p-4"
-        >
-          <Document
-            file={arquivo}
-            onLoadSuccess={({ numPages }) => setTotalPaginas(numPages)}
-            loading={<Carregando texto="Abrindo PDF…" />}
-            error={
+        <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-borda bg-superficie/40">
+          <PdfLoader
+            document={arquivo}
+            workerSrc={WORKER}
+            beforeLoad={() => <Carregando texto="Abrindo PDF…" />}
+            errorMessage={(erro) => (
               <p className="p-8 text-center text-sm text-perigo">
-                Não consegui abrir este PDF. Verifique se a API está rodando.
+                Não consegui abrir este PDF: {erro.message}
               </p>
-            }
-            className="flex justify-center"
+            )}
           >
-            <Page
-              pageNumber={pagina}
-              scale={escala}
-              renderTextLayer
-              renderAnnotationLayer
-              className="shadow-lg"
-            />
-          </Document>
-
-          {/* Barra de ação da seleção. */}
-          {selecao ? (
-            <div className="sticky bottom-2 left-0 right-0 mx-auto flex w-fit flex-wrap items-center gap-2 rounded-lg border border-borda bg-fundo/95 p-2 shadow-xl backdrop-blur">
-              <div className="flex items-center gap-1" role="group" aria-label="Cor do destaque">
-                {LISTA_CORES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={CORES_DESTAQUE[c].rotulo}
-                    aria-pressed={cor === c}
-                    onClick={() => setCor(c)}
-                    className={cn(
-                      'size-6 rounded-full transition-transform',
-                      CORES_DESTAQUE[c].classe,
-                      cor === c
-                        ? 'scale-110 ring-2 ring-texto ring-offset-2 ring-offset-fundo'
-                        : '',
-                    )}
-                  />
-                ))}
-              </div>
-
-              <Campo
-                value={lembrete}
-                onChange={(e) => setLembrete(e.target.value)}
-                placeholder="Lembrete (opcional)"
-                aria-label="Lembrete para este destaque"
-                className="h-8 w-48 text-xs"
-              />
-
-              <Botao tamanho="sm" variante="primario" onClick={() => void criarDestaque()}>
-                <Highlighter aria-hidden />
-                Destacar
-              </Botao>
-
-              <Botao tamanho="sm" onClick={abrirNaIde} title="Abrir o trecho na mini IDE">
-                <Code2 aria-hidden />
-                Abrir na IDE
-              </Botao>
-            </div>
-          ) : null}
+            {(pdfDocument) => (
+              <PdfHighlighter
+                pdfDocument={pdfDocument}
+                highlights={destaquesNoPdf}
+                utilsRef={ligarViewer}
+                pdfScaleValue={escala}
+                textSelectionColor="rgba(56, 189, 248, 0.3)"
+                style={{ height: '100%', position: 'relative' }}
+                onSelection={(selecao) => {
+                  selecaoRef.current = selecao;
+                }}
+                selectionTip={
+                  <BarraSelecao aoDestacar={criarDestaque} aoAbrirNaIde={abrirNaIde} />
+                }
+              >
+                <ContainerDestaque
+                  aoRemover={removerDestaque}
+                  aoSelecionar={irParaDestaque}
+                />
+              </PdfHighlighter>
+            )}
+          </PdfLoader>
         </div>
 
         {/* ----------------------------------------------------------- painel */}
@@ -293,7 +289,7 @@ export function Leitor() {
           ) : (
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
               <p className="text-[11px] uppercase tracking-wide text-suave">
-                Página {pagina} · {destaquesDaPagina.length} destaque(s)
+                {destaques.length} destaque(s) neste documento
               </p>
               {destaques.length === 0 ? (
                 <p className="py-8 text-center text-xs text-suave">
@@ -318,7 +314,7 @@ export function Leitor() {
                     />
                     <button
                       type="button"
-                      onClick={() => irPara(d.pagina)}
+                      onClick={() => irParaDestaque(d.id)}
                       className="text-[11px] text-suave hover:text-destaque"
                     >
                       pág. {d.pagina}
@@ -377,7 +373,7 @@ export function Leitor() {
         <Botao
           tamanho="icone"
           aria-label="Próxima página"
-          disabled={pagina >= totalPaginas}
+          disabled={totalPaginas > 0 && pagina >= totalPaginas}
           onClick={() => irPara(pagina + 1)}
         >
           <ChevronRight aria-hidden />
