@@ -1,0 +1,36 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file=../../.env src/index.ts",
+    "start": "node --env-file=../../.env src/index.ts",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=../../.env src/db/migrar.ts",
+    "db:studio": "drizzle-kit studio",
+    "indexar": "node --env-file=../../.env src/pdf/cli-indexar.ts",
+    "links-report": "node --env-file=../../.env src/pdf/cli-links.ts"
+  },
+  "dependencies": {
+    "@estudos/shared": "workspace:*",
+    "@fastify/cors": "^11.1.0",
+    "@google/genai": "^1.24.0",
+    "better-sqlite3": "^12.4.1",
+    "chokidar": "^4.0.3",
+    "drizzle-orm": "^0.44.6",
+    "fastify": "^5.6.1",
+    "pdfjs-dist": "^5.4.149",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.6.2",
+    "drizzle-kit": "^0.31.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
