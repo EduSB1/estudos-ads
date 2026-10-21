@@ -25,7 +25,14 @@ import { CORES_DESTAQUE, type CorDestaque } from '@/lib/cores';
 import type { DestaqueApi, DocumentoDetalhe } from '@/lib/tipos';
 import { cn } from '@/lib/utils';
 
-// O worker do pdfjs e servido pelo proprio build; nada vem de CDN.
+/**
+ * Worker do pdfjs servido pelo proprio build.
+ *
+ * Nao use o padrao do PdfLoader: ele aponta para a unpkg (CDN) e fixa outra
+ * versao, o que quebra o uso offline e faz a API discordar do worker. O
+ * especificador abaixo e o mesmo que a biblioteca importa, e `resolve.dedupe`
+ * no vite.config garante que seja a mesma copia.
+ */
 const WORKER = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 /** Converte o registro da API no formato que o PdfHighlighter espera. */
@@ -242,7 +249,8 @@ export function Leitor() {
                 utilsRef={ligarViewer}
                 pdfScaleValue={escala}
                 textSelectionColor="rgba(56, 189, 248, 0.3)"
-                style={{ height: '100%', position: 'relative' }}
+                // O PDFViewer do pdf.js exige container absoluto; o pai e relative.
+                style={{ position: 'absolute', inset: 0 }}
                 onSelection={(selecao) => {
                   selecaoRef.current = selecao;
                 }}
