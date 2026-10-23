@@ -123,6 +123,17 @@ docker compose up -d
 Sobe três serviços: `web` (nginx, porta 5173), `api` (porta 3333) e `piston` (porta 2000).
 A pasta de PDFs entra como volume **read-only**.
 
+O container da api usa o **mesmo** `./data/estudos.db` do host: o que você indexar ou passar por
+OCR com `pnpm` vale no Docker e vice-versa. Ele roda com o seu usuário (`DOCKER_UID`/`DOCKER_GID`
+no `.env`) para os arquivos em `./data` não ficarem com dono root.
+
+Depois de mudar qualquer coisa no front, reconstrua a imagem — o `dist` é copiado para dentro
+dela no build, então um `pnpm build` no host sozinho não muda o que o container serve:
+
+```bash
+docker compose build web && docker compose up -d web
+```
+
 ## Acessibilidade e atalhos
 
 Navegação completa por teclado, foco sempre visível, landmarks e rótulos ARIA em português,

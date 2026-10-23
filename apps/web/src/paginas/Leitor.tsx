@@ -60,7 +60,9 @@ export function Leitor() {
   const [destaques, setDestaques] = useState<DestaqueApi[]>([]);
   const [pagina, setPagina] = useState(() => Number(params.get('pagina')) || 1);
   const [totalPaginas, setTotalPaginas] = useState(0);
-  const [escala, setEscala] = useState(1.2);
+  // 'page-width' faz a pagina caber na largura disponivel; os botoes de zoom
+  // trocam para um valor numerico a partir da escala que estiver em uso.
+  const [escala, setEscala] = useState<number | 'page-width'>('page-width');
   const [painel, setPainel] = useState<'destaques' | 'anotacoes'>('destaques');
 
   const utilsRef = useRef<PdfHighlighterUtils | null>(null);
@@ -89,6 +91,18 @@ export function Leitor() {
       void api.patch(`/documentos/${documentoId}/leitura`, { pagina }).catch(() => undefined);
     }, 800);
   }, [documentoId, pagina, setParams]);
+
+  /** Escala efetiva em uso, para o zoom partir do que esta na tela. */
+  const escalaAtual = useCallback(() => {
+    if (typeof escala === 'number') return escala;
+    return utilsRef.current?.getViewer()?.currentScale ?? 1;
+  }, [escala]);
+
+  const ajustarZoom = useCallback(
+    (delta: number) =>
+      setEscala(Number(Math.min(3, Math.max(0.5, escalaAtual() + delta)).toFixed(2))),
+    [escalaAtual],
+  );
 
   const irPara = useCallback(
     (n: number) => {
@@ -213,16 +227,23 @@ export function Leitor() {
             tamanho="icone"
             variante="fantasma"
             aria-label="Diminuir zoom"
-            onClick={() => setEscala((e) => Math.max(0.6, Number((e - 0.2).toFixed(2))))}
+            onClick={() => ajustarZoom(-0.2)}
           >
             <ZoomOut aria-hidden />
           </Botao>
-          <span className="w-12 text-center text-xs text-suave">{Math.round(escala * 100)}%</span>
+          <button
+            type="button"
+            onClick={() => setEscala('page-width')}
+            title="Ajustar à largura"
+            className="w-16 rounded text-center text-xs text-suave transition-colors hover:text-destaque"
+          >
+            {escala === 'page-width' ? 'largura' : `${Math.round(escala * 100)}%`}
+          </button>
           <Botao
             tamanho="icone"
             variante="fantasma"
             aria-label="Aumentar zoom"
-            onClick={() => setEscala((e) => Math.min(3, Number((e + 0.2).toFixed(2))))}
+            onClick={() => ajustarZoom(0.2)}
           >
             <ZoomIn aria-hidden />
           </Botao>

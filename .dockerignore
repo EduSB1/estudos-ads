@@ -7,3 +7,4 @@ data
 scripts/.logs
 scripts/links-report
 coverage
+**/*.tsbuildinfo

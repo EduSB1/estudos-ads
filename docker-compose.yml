@@ -14,9 +14,12 @@ services:
     volumes:
       # A pasta de PDFs entra SOMENTE LEITURA. Nao remova o :ro.
       - ${PDF_DIR:?defina PDF_DIR no .env}:/pdfs:ro
-      - dados-sqlite:/dados
+      # Mesmo banco do host: o OCR e a indexacao rodados com pnpm valem aqui.
+      - ./data:/dados
     ports:
       - '3333:3333'
+    # Roda com o seu usuario para que os arquivos em ./data nao virem root.
+    user: '${DOCKER_UID:-1000}:${DOCKER_GID:-1000}'
     depends_on:
       piston:
         condition: service_started
@@ -57,5 +60,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  dados-sqlite:
   piston-pacotes:
